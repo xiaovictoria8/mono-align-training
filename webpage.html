@@ -1,0 +1,184 @@
+
+<html>
+<head>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.10.2/jquery.min.js"></script>
+<script src="https://timbrady.org/turk/TimTurkTools.js"></script>
+<script type="text/javascript" src ="birthdate.js"></script>
+<link rel="stylesheet" type="text/css" href="experiment.css">
+<link rel="stylesheet" type="text/css" href="sceneObject.css">
+<script>
+/* Setup global experiment info */
+var curTrial = 0;
+var displayTime;
+var trialStruct = new Array();
+var startExpTime = new Date();
+
+var stim = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 
+	'August', 'September', 'October', 'November', 'December', 'Wednesday', 'Thursday', 
+	'Friday', 'Saturday', 'Sunday', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 
+	'August', 'September', 'October', 'November', 'December', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 
+	'Friday', 'Saturday', 'Sunday'];
+
+var stimOrder = Shuffle(stim);
+stimOrder.unshift('Monday');
+stimOrder.unshift('Tuesday');
+
+/* Run one trial: 
+   ---------------- */
+function RunTrial() {
+  /* No more starting trials until this one is done: */
+  $(document).unbind("keypress.start");
+  $('#startTrial').hide();
+  
+  /* Show stimuli: */
+  setTimeout(function() {
+  	$('#wordBox').text(stimOrder[curTrial]);
+    $('#wordBox').show();
+    $('#responseBox').val("");
+    $('#responseBox').show();
+    $('#responseBox').focus();    
+
+    var startTime = new Date();
+    var startType = undefined;
+    $('#responseBox').bind("keypress.response", function(e) { 
+    	if (!startType) {
+    		startType = new Date();
+    	}
+      if (e.which == 13) {
+        /* Ok, lets hide the response box... */
+        $('#responseBox').unbind("keypress.response");
+        $('#responseBox').hide();
+        $('#wordBox').hide();
+        
+        /* Store trial information ... */
+        trialStruct.push({
+          'shownOrder': curTrial,
+          'responseTyped': $('#responseBox').val(),
+          'stimulusName': stimOrder[curTrial],
+          'rt': (new Date()) - startTime,
+          'startType': startType - startTime
+        });
+        
+				if (curTrial < stimOrder.length-1) {
+					curTrial++;
+					$('#trialNum').text('Trial ' + (curTrial+1) +
+							' of ' + (stimOrder.length));
+					$('#startTrial').show();
+					setTimeout(function() {
+						$(document).bind("keypress.start", function(e) { RunTrial(); });
+					}, 200);
+				} else {
+					/* If no trials left, show end of experiment information: */
+					$('#done').show();
+					$('#box').hide();
+					$('#intrucBox').hide();
+				}
+			}
+		});
+  }, 500);
+}
+
+/* Block the enter key outside the response box, so it doesn't 
+  submit the form early. This is useful when there is only 1 
+  input box, as some browsers submit a form when enter is pressed
+  in this case.  */
+$(function() {
+  $(document).bind('keypress.blockEnter', function(e){
+    if ( e.which == 13 ) { return false;  }
+  });
+  date_populate("date", "month", "year");
+});
+
+
+/* Start the experiment (check for Turk) */
+function StartExperiment() {
+  if (IsOnTurk() && IsTurkPreview()) {
+    alert("Please accept the HIT before continuing.");
+    return false;
+  }
+  startTime = new Date();
+  $('#instructions').hide();
+  $('#box').show();
+  $('#intrucBox').show();
+  $(document).bind("keypress.start", function(e) { RunTrial(); });
+}
+
+/* Save the data to the server (choose what to save) */
+function SaveData() {
+  var totalTime = (new Date()) - startExpTime;
+  var newDate = new Date();
+  $('#assignmentId').val(GetAssignmentId());
+  var curID = (IsOnTurk())? GetAssignmentId() : prompt("Doesn't look like you " + 
+  "are on Turk, so you're probably testing. Enter an ID to save your data with:", "id");
+  d = { 
+    "curID": curID,
+    "workerID": GetWorkerId(),
+    "curTime": newDate.today() + " @ " + newDate.timeNow(),
+    "userAgent": navigator.userAgent,
+    "windowWidth": $(window).width(),
+    "windowHeight": $(window).height(),
+    "screenWidth": screen.width,
+    "screenHeight": screen.height,   
+    "totalTime": totalTime,
+    "comments": $('#comments').val(),
+    "birthday": $('#date').val() + "," + $('#month').val() + "," + $('#year').val(),
+    "trialStruct": trialStruct
+  };
+  SendToServer(curID, d);
+}
+
+/* Send the data to the server as JSON: */
+function SendToServer(id, curData) {
+  var dataToServer = {
+    'id': id,
+    'experimentName': 'MonthType',
+    'curData': JSON.stringify(curData)
+  }; 
+  $.post("https://timbrady.org/turk/save.pl",
+    dataToServer,
+    function(data) { 
+      document.forms[0].submit(); 
+    }
+  ).fail(function(data) { 
+    document.forms[0].submit(); 
+  });
+}
+</script>
+</head>
+<body>
+
+<form id="turkSubmit" action="https://www.mturk.com/mturk/externalSubmit" method="post" autocomplete="off">
+<input type="hidden" name="assignmentId" id="assignmentId" value="">
+<input type="submit" value="Submit" name="submitButton" id="submitButton" style="display: none">
+
+<div id="done"><div id="doneText">Done! Thanks!<br><br>Any comments for us? (Was it fun? Any technical difficulties?)<br><br>
+<textarea name="comments" id="comments" style="width: 300px; height: 200px"></textarea><br><br>
+We're interested in how your date of birth affects how quickly you process words. So if you don't mind, please enter your birthdate: <br><SELECT id="date" name="dd"></SELECT><SELECT id="month" name="mm"></SELECT><SELECT id="year" name="yyyy"></SELECT><br><br>
+Thanks for doing the HIT!<br><br>
+<a href="javascript:SaveData()" id="timSubmit">Submit</a>
+</div><div id="saving">Saving . . .</div></div>
+
+<div id="intrucBox">
+<div id="trialNum" style="text-align:left">Trial 1 of 38</div><div id="instruc"></div>
+</div>
+
+<div id="box" style="text-align:center">
+<div id="startTrial">Press 's' to start the next trial</div>
+
+<!-- Actual trials: -->
+<div id="wordBox">Monday</div>
+<input type="text" id="responseBox" name="responseBox" placeholder="Enter #" class="inputBox">
+</div>
+
+<div id="instructions">
+  <p>In this HIT, you will see words flashed up on the screen. You'll have to type the number that goes with each word <strong>as quickly as possible</strong>, and then hit the enter key to submit your answer.</p><p> For example, if you see January, you will need to type <strong>1</strong> and press enter as quickly as possible. If you see Tuesday, you might type <strong>2</strong> as quickly as possible.</p><p>There will be approximately 40 words, and the HIT should take about 2 minutes total.</p> 
+  <p style='text-align: center'><a href='javascript:StartExperiment()' id='startExperimentButton'>Start Experiment</a></p>
+  
+  <!-- Consent statement at bottom: -->
+  <div id='consentDiv'><p><u>Consent to Participate in Research:</u></p><p>By answering the following questions, you are participating in a study being performed by cognitive scientists in the Harvard University Psychology Department.  The purpose of this research is to examine human visual performance.</p><p>By participating you are confirming that you are over 18 years of age and have normal or corrected-to-normal vision.</p><p>If you have questions about this research, or if you would like to receive a report of this research when it is completed please contact Timothy Brady at tbrady@wjh.harvard.edu.</p><p>Your participation in this research is completely voluntary.  If you choose to participate, you may change your mind and leave the study at any time.  Refusal to participate or stopping your participation will involve no penalty or loss of benefits to which you are otherwise entitled.</p><p>You may decline to answer any or all of the following questions. Your anonymity is assured; the researchers who have requested your participation will not receive any personal information about you. </p><p>For questions, concerns, or complaints that are not being addressed by the researcher, or research-related harm contact:  Committee on the Use of Human Subjects in Research at Harvard University, 1414 Massachusetts Avenue, Second Floor, Cambridge, MA  02138. Phone: 617-496-CUHS (2847).  Email: cuhs@fas.harvard.edu</p><p>By continuing, you are confirming that you understand these instructions and conditions of participation.</p></div>
+</div>
+
+</form>
+
+</body>
+</html>
